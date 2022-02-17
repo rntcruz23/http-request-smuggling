@@ -19,34 +19,42 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-import socket
-import ssl
+import socket, ssl
 import time
+import json
+import os
 
+class SocketConnection():
+    def __init__(self, urlparsed, path):    
+        json_res = json.loads(urlparsed)
+        self.host = json_res['host']
+        self.port = json_res['port']
+        self.path = json_res['path']
+        self.ssl_enable = json_res["ssl"]
+        self.reports = path
+            
+        #If host is invalid then it will exit
+        if self.host == None:
+            print(f"Invalid host - {self.host}")
+            sys.exit(1)
 
-class SocketConnection:
-    def __init__(self):
-        self.context = None
-        self.data = None
-        self.s = None
-        self.ssl = None
-        self.ssl_enable = False
+        self.reports = os.path.join(path, self.host)
 
-    def connect(self, host, port, timeout):
+    def connect(self, timeout):
         try:
-            if port == 443:
-                self.ssl_enable = True
+            if self.ssl_enable:
                 self.context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-                self.s = socket.create_connection((host, port))
-                self.ssl = self.context.wrap_socket(self.s, server_hostname=host)
+                self.s = socket.create_connection((self.host, self.port))
+                self.ssl = self.context.wrap_socket(self.s, server_hostname=self.host)
                 self.ssl.settimeout(timeout)
             else:
                 self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.s.settimeout(timeout)
-                self.s.connect((host, port))
+                self.s.connect((self.host, self.port))
+            self.is_connected = True
             return self.s
-        except socket.error as msg:
-            print(f'Socket Error → {msg}')
+        except Exception as e:
+            print(e)
             return None
 
     def send_payload(self, payload):
@@ -54,27 +62,26 @@ class SocketConnection:
             self.ssl.send(str(payload).encode())
         else:
             self.s.send(str(payload).encode())
-
-    def receive_data(self, buffer_size=1024):
+        
+    def receive_data(self, bufferSize=1024):
         try:
-            if self.ssl_enable:
+            if(self.ssl_enable):
                 self.ssl.settimeout(None)
-                self.data = self.ssl.recv(buffer_size)
+                self.data = self.ssl.recv(bufferSize)
             else:
                 self.s.settimeout(None)
-                self.data = self.s.recv(buffer_size)
-        except socket.timeout:
-            print('Error: Socket timeout')
+                self.data = self.s.recv(bufferSize)
+        except Exception:
+            self.data = None
         return self.data
 
-    @staticmethod
-    def detect_hrs_vulnerability(start_time, timeout):
-        if time.time() - start_time >= timeout:
+    def detect_hrs_vulnerability(self,startTime,timeout):
+        if time.time() - startTime >= timeout:
             return True
         return False
-
+    
     def close_connection(self):
-        if self.ssl_enable:
+        if(self.ssl_enable):
             self.ssl.close()
             del self.ssl
         self.s.close()
